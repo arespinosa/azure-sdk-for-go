@@ -7034,7 +7034,7 @@ func (client *Client) uploadNodeLogsHandleResponse(resp *http.Response) (UploadN
 	return result, nil
 }
 
-// NewlistPoolUsageMetricsPager - Lists the usage metrics, aggregated by Pool across individual time intervals,
+// newListPoolUsageMetricsPager - Lists the usage metrics, aggregated by Pool across individual time intervals,
 // for the specified Account.
 //
 // If you do not specify a $filter clause including a poolId, the response
@@ -7046,7 +7046,7 @@ func (client *Client) uploadNodeLogsHandleResponse(resp *http.Response) (UploadN
 //
 // Generated from API version 2024-07-01.20.0
 //   - options - listPoolUsageMetricsOptions contains the optional parameters for the Client.NewlistPoolUsageMetricsPager method.
-func (client *Client) NewlistPoolUsageMetricsPager(options *listPoolUsageMetricsOptions) *runtime.Pager[listPoolUsageMetricsResponse] {
+func (client *Client) newListPoolUsageMetricsPager(options *listPoolUsageMetricsOptions) *runtime.Pager[listPoolUsageMetricsResponse] {
 	return runtime.NewPager(runtime.PagingHandler[listPoolUsageMetricsResponse]{
 		More: func(page listPoolUsageMetricsResponse) bool {
 			return page.ODataNextLink != nil && len(*page.ODataNextLink) > 0
