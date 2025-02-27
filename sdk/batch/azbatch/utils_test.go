@@ -152,6 +152,7 @@ func randomString(t *testing.T) string {
 }
 
 func record(t *testing.T) *azbatch.Client {
+	t.Parallel()
 	err := recording.Start(t, recordingDir, nil)
 	require.NoError(t, err)
 	t.Cleanup(func() {

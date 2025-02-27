@@ -19,7 +19,6 @@ import (
 var ctx = context.Background()
 
 func TestApplications(t *testing.T) {
-	t.Parallel()
 	client := record(t)
 	for apps := client.NewListApplicationsPager(nil); apps.More(); {
 		page, err := apps.NextPage(ctx)
@@ -36,7 +35,6 @@ func TestApplications(t *testing.T) {
 }
 
 func TestDeallocateNode(t *testing.T) {
-	t.Parallel()
 	client, poolID := createDefaultPool(t)
 	node := firstReadyNode(t, client, poolID)
 	dn, err := client.DeallocateNode(ctx, poolID, *node.ID, nil)
@@ -62,15 +60,10 @@ func TestDeallocateNode(t *testing.T) {
 }
 
 func TestJob(t *testing.T) {
-	t.Parallel()
-
 	client, poolID := createDefaultPool(t)
 
 	t.Run("Schedule", func(t *testing.T) {
-		t.Parallel()
-
 		client := record(t)
-
 		id := randomString(t)
 		schedule := azbatch.CreateJobScheduleContent{
 			DisplayName: to.Ptr(id),
@@ -215,7 +208,6 @@ func TestJob(t *testing.T) {
 }
 
 func TestListSupportedImages(t *testing.T) {
-	t.Parallel()
 	client := record(t)
 	for images := client.NewListSupportedImagesPager(nil); images.More(); {
 		page, err := images.NextPage(ctx)
@@ -225,8 +217,6 @@ func TestListSupportedImages(t *testing.T) {
 }
 
 func TestNode(t *testing.T) {
-	t.Parallel()
-
 	client := record(t)
 	pool := defaultPoolContent(t)
 	pool.NetworkConfiguration = &azbatch.NetworkConfiguration{
@@ -354,9 +344,7 @@ func TestNode(t *testing.T) {
 }
 
 func TestPool(t *testing.T) {
-	t.Parallel()
 	client := record(t)
-
 	pool := defaultPoolContent(t)
 	// this test doesn't require a node so, don't allocate one
 	pool.TargetDedicatedNodes = to.Ptr(int32(0))
@@ -462,7 +450,6 @@ func TestPool(t *testing.T) {
 }
 
 func TestRebootNode(t *testing.T) {
-	t.Parallel()
 	client, poolID := createDefaultPool(t)
 	node := firstReadyNode(t, client, poolID)
 	rn, err := client.RebootNode(ctx, poolID, *node.ID, nil)
@@ -471,7 +458,6 @@ func TestRebootNode(t *testing.T) {
 }
 
 func TestReimageNode(t *testing.T) {
-	t.Parallel()
 	client, poolID := createDefaultPool(t)
 	node := firstReadyNode(t, client, poolID)
 	rn, err := client.ReimageNode(ctx, poolID, *node.ID, nil)
@@ -667,8 +653,6 @@ func TestSerDe(t *testing.T) {
 }
 
 func TestTask(t *testing.T) {
-	t.Parallel()
-
 	client, poolID := createDefaultPool(t)
 	jid := randomString(t)
 	cj, err := client.CreateJob(ctx, azbatch.CreateJobContent{
@@ -680,9 +664,7 @@ func TestTask(t *testing.T) {
 	require.NotNil(t, cj)
 
 	t.Run("Replace", func(t *testing.T) {
-		t.Parallel()
 		client := record(t)
-
 		tid := randomString(t)
 		ct, err := client.CreateTask(ctx, jid, azbatch.CreateTaskContent{
 			CommandLine: to.Ptr("/bin/sh -c 'sleep 300'"),
