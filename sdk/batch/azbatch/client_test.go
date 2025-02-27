@@ -425,17 +425,7 @@ func TestPool(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, dr)
 
-	_, err = poll(
-		func() azbatch.Pool {
-			p, err := client.GetPool(ctx, *pool.ID, &azbatch.GetPoolOptions{SelectParam: []string{"allocationState"}})
-			require.NoError(t, err)
-			return p.Pool
-		},
-		func(p azbatch.Pool) bool {
-			return p.AllocationState != nil && *p.AllocationState == azbatch.AllocationStateSteady
-		},
-		5*time.Minute,
-	)
+	steady(t, client, *pool.ID)
 	require.NoError(t, err)
 	rp, err := client.ResizePool(ctx, *pool.ID, azbatch.ResizePoolContent{
 		NodeDeallocationOption: to.Ptr(azbatch.NodeDeallocationOptionRequeue),
@@ -444,6 +434,7 @@ func TestPool(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, rp)
 
+	steady(t, client, *pool.ID)
 	sr, err := client.StopPoolResize(ctx, *pool.ID, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sr)

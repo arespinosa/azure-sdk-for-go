@@ -105,6 +105,7 @@ func defaultPoolContent(t *testing.T) azbatch.CreatePoolContent {
 // It fails the test when no such node is found within 6 minutes.
 func firstReadyNode(t *testing.T, client *azbatch.Client, poolID string) azbatch.Node {
 	// note this assumes the pool has exactly one node, which is true for all test pools at time of writing
+	steady(t, client, poolID)
 	node, err := poll(
 		func() *azbatch.Node {
 			var node *azbatch.Node
@@ -170,4 +171,27 @@ func record(t *testing.T) *azbatch.Client {
 	})
 	require.NoError(t, err)
 	return c
+}
+
+// steady waits for a pool to reach the steady allocation state. It fails the test
+// if this doesn't happen within 6 minutes or is impossible because the pool can't
+// allocate a node.
+func steady(t *testing.T, client *azbatch.Client, poolID string) {
+	_, err := poll(
+		func() azbatch.Pool {
+			p, err := client.GetPool(ctx, poolID, nil)
+			require.NoError(t, err)
+			for _, e := range p.ResizeErrors {
+				if e != nil && e.Message != nil {
+					t.Fatal(*e.Message)
+				}
+			}
+			return p.Pool
+		},
+		func(p azbatch.Pool) bool {
+			return p.AllocationState != nil && *p.AllocationState == azbatch.AllocationStateSteady
+		},
+		6*time.Minute,
+	)
+	require.NoError(t, err)
 }
