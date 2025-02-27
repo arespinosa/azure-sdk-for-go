@@ -170,28 +170,3 @@ func record(t *testing.T) *azbatch.Client {
 	require.NoError(t, err)
 	return c
 }
-
-// waitForTask creates a task with the given command line and waits 5 minutes for it to complete.
-// It fails the test if the task doesn't complete within that time.
-func waitForTask(t *testing.T, client *azbatch.Client, jobID, commandLine string) azbatch.Task {
-	tid := randomString(t)
-	_, err := client.CreateTask(ctx, jobID, azbatch.CreateTaskContent{
-		CommandLine: to.Ptr(commandLine),
-		ID:          to.Ptr(tid),
-	}, nil)
-	require.NoError(t, err)
-
-	task, err := poll(
-		func() azbatch.Task {
-			gt, err := client.GetTask(ctx, jobID, tid, nil)
-			require.NoError(t, err)
-			return gt.Task
-		},
-		func(task azbatch.Task) bool {
-			return task.State != nil && *task.State == azbatch.TaskStateCompleted
-		},
-		5*time.Minute,
-	)
-	require.NoError(t, err, "task isn't complete")
-	return task
-}

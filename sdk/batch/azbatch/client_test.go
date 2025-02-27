@@ -66,6 +66,90 @@ func TestJob(t *testing.T) {
 
 	client, poolID := createDefaultPool(t)
 
+	t.Run("Schedule", func(t *testing.T) {
+		t.Parallel()
+
+		client := record(t)
+
+		id := randomString(t)
+		schedule := azbatch.CreateJobScheduleContent{
+			DisplayName: to.Ptr(id),
+			ID:          to.Ptr(id),
+			JobSpecification: &azbatch.JobSpecification{
+				PoolInfo: &azbatch.PoolInfo{PoolID: to.Ptr(poolID)},
+			},
+			Metadata: []*azbatch.MetadataItem{
+				{
+					Name:  to.Ptr("key"),
+					Value: to.Ptr("value"),
+				},
+			},
+			Schedule: &azbatch.JobScheduleConfiguration{
+				RecurrenceInterval: to.Ptr("PT1H"),
+			},
+		}
+		cj, err := client.CreateJobSchedule(ctx, schedule, nil)
+		require.NoError(t, err)
+		require.NotNil(t, cj)
+
+		rj, err := client.ReplaceJobSchedule(ctx, id, azbatch.JobSchedule{
+			ID: to.Ptr(id + "2"),
+			JobSpecification: &azbatch.JobSpecification{
+				PoolInfo: &azbatch.PoolInfo{PoolID: to.Ptr(poolID)},
+			},
+			Schedule: &azbatch.JobScheduleConfiguration{
+				RecurrenceInterval: to.Ptr("PT2H"),
+			},
+		}, nil)
+		require.NoError(t, err)
+		require.NotNil(t, rj)
+
+		gj, err := client.GetJobSchedule(ctx, *schedule.ID, nil)
+		require.NoError(t, err)
+		require.NotNil(t, gj)
+
+		uj, err := client.UpdateJobSchedule(ctx, *schedule.ID, azbatch.UpdateJobScheduleContent{
+			Metadata: []*azbatch.MetadataItem{
+				{
+					Name:  to.Ptr("key"),
+					Value: to.Ptr("value"),
+				},
+			},
+		}, nil)
+		require.NoError(t, err)
+		require.NotNil(t, uj)
+
+		ex, err := client.JobScheduleExists(ctx, *schedule.ID, nil)
+		require.NoError(t, err)
+		require.NotNil(t, ex)
+
+		for scheds := client.NewListJobSchedulesPager(nil); scheds.More(); {
+			_, err := scheds.NextPage(ctx)
+			require.NoError(t, err)
+		}
+
+		for jobs := client.NewListJobsFromSchedulePager(*schedule.ID, nil); jobs.More(); {
+			_, err := jobs.NextPage(ctx)
+			require.NoError(t, err)
+		}
+
+		disj, err := client.DisableJobSchedule(ctx, id, nil)
+		require.NoError(t, err)
+		require.NotNil(t, disj)
+
+		ej, err := client.EnableJobSchedule(ctx, id, nil)
+		require.NoError(t, err)
+		require.NotNil(t, ej)
+
+		tj, err := client.TerminateJobSchedule(ctx, id, nil)
+		require.NoError(t, err)
+		require.NotNil(t, tj)
+
+		dj, err := client.DeleteJobSchedule(ctx, id, nil)
+		require.NoError(t, err)
+		require.NotNil(t, dj)
+	})
+
 	jid := randomString(t)
 	cj, err := client.CreateJob(ctx, azbatch.CreateJobContent{
 		Constraints: &azbatch.JobConstraints{
@@ -130,90 +214,6 @@ func TestJob(t *testing.T) {
 
 }
 
-func TestJobSchedule(t *testing.T) {
-	t.Parallel()
-
-	client, poolID := createDefaultPool(t)
-
-	id := randomString(t)
-	schedule := azbatch.CreateJobScheduleContent{
-		DisplayName: to.Ptr(id),
-		ID:          to.Ptr(id),
-		JobSpecification: &azbatch.JobSpecification{
-			PoolInfo: &azbatch.PoolInfo{PoolID: to.Ptr(poolID)},
-		},
-		Metadata: []*azbatch.MetadataItem{
-			{
-				Name:  to.Ptr("key"),
-				Value: to.Ptr("value"),
-			},
-		},
-		Schedule: &azbatch.JobScheduleConfiguration{
-			RecurrenceInterval: to.Ptr("PT1H"),
-		},
-	}
-	cj, err := client.CreateJobSchedule(ctx, schedule, nil)
-	require.NoError(t, err)
-	require.NotNil(t, cj)
-
-	rj, err := client.ReplaceJobSchedule(ctx, id, azbatch.JobSchedule{
-		ID: to.Ptr(id + "2"),
-		JobSpecification: &azbatch.JobSpecification{
-			PoolInfo: &azbatch.PoolInfo{PoolID: to.Ptr(poolID)},
-		},
-		Schedule: &azbatch.JobScheduleConfiguration{
-			RecurrenceInterval: to.Ptr("PT2H"),
-		},
-	}, nil)
-	require.NoError(t, err)
-	require.NotNil(t, rj)
-
-	gj, err := client.GetJobSchedule(ctx, *schedule.ID, nil)
-	require.NoError(t, err)
-	require.NotNil(t, gj)
-
-	uj, err := client.UpdateJobSchedule(ctx, *schedule.ID, azbatch.UpdateJobScheduleContent{
-		Metadata: []*azbatch.MetadataItem{
-			{
-				Name:  to.Ptr("key"),
-				Value: to.Ptr("value"),
-			},
-		},
-	}, nil)
-	require.NoError(t, err)
-	require.NotNil(t, uj)
-
-	ex, err := client.JobScheduleExists(ctx, *schedule.ID, nil)
-	require.NoError(t, err)
-	require.NotNil(t, ex)
-
-	for scheds := client.NewListJobSchedulesPager(nil); scheds.More(); {
-		_, err := scheds.NextPage(ctx)
-		require.NoError(t, err)
-	}
-
-	for jobs := client.NewListJobsFromSchedulePager(*schedule.ID, nil); jobs.More(); {
-		_, err := jobs.NextPage(ctx)
-		require.NoError(t, err)
-	}
-
-	disj, err := client.DisableJobSchedule(ctx, id, nil)
-	require.NoError(t, err)
-	require.NotNil(t, disj)
-
-	ej, err := client.EnableJobSchedule(ctx, id, nil)
-	require.NoError(t, err)
-	require.NotNil(t, ej)
-
-	tj, err := client.TerminateJobSchedule(ctx, id, nil)
-	require.NoError(t, err)
-	require.NotNil(t, tj)
-
-	dj, err := client.DeleteJobSchedule(ctx, id, nil)
-	require.NoError(t, err)
-	require.NotNil(t, dj)
-}
-
 func TestListSupportedImages(t *testing.T) {
 	t.Parallel()
 	client := record(t)
@@ -248,6 +248,9 @@ func TestNode(t *testing.T) {
 				},
 			},
 		},
+	}
+	pool.StartTask = &azbatch.StartTask{
+		CommandLine: to.Ptr("/bin/sh -c 'echo done > $AZ_BATCH_NODE_SHARED_DIR/test.txt'"),
 	}
 	poolID := *pool.ID
 	_, err := client.CreatePool(ctx, pool, nil)
@@ -317,32 +320,6 @@ func TestNode(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, du)
 
-	rm, err := client.RemoveNodes(ctx, poolID, azbatch.RemoveNodeContent{
-		NodeList: []*string{node.ID},
-	}, nil)
-	require.NoError(t, err)
-	require.NotNil(t, rm)
-}
-
-func TestNodeFiles(t *testing.T) {
-	t.Parallel()
-
-	client, poolID := createDefaultPool(t)
-	node := firstReadyNode(t, client, poolID)
-	jid := randomString(t)
-	cj, err := client.CreateJob(ctx, azbatch.CreateJobContent{
-		Constraints: &azbatch.JobConstraints{
-			MaxWallClockTime: to.Ptr("PT1H"),
-		},
-		ID:                 to.Ptr(jid),
-		OnAllTasksComplete: to.Ptr(azbatch.OnAllTasksCompleteTerminateJob),
-		PoolInfo:           &azbatch.PoolInfo{PoolID: &poolID},
-	}, nil)
-	require.NoError(t, err)
-	require.NotNil(t, cj)
-
-	_ = waitForTask(t, client, jid, "/bin/sh -c 'echo done > $AZ_BATCH_NODE_SHARED_DIR/test.txt'")
-
 	var file *azbatch.NodeFile
 	files := client.NewListNodeFilesPager(poolID, *node.ID, &azbatch.ListNodeFilesOptions{Recursive: to.Ptr(true)})
 	for files.More() {
@@ -368,6 +345,12 @@ func TestNodeFiles(t *testing.T) {
 	df, err := client.DeleteNodeFile(ctx, poolID, *node.ID, *file.Name, nil)
 	require.NoError(t, err)
 	require.NotNil(t, df)
+
+	rm, err := client.RemoveNodes(ctx, poolID, azbatch.RemoveNodeContent{
+		NodeList: []*string{node.ID},
+	}, nil)
+	require.NoError(t, err)
+	require.NotNil(t, rm)
 }
 
 func TestPool(t *testing.T) {
@@ -445,7 +428,7 @@ func TestPool(t *testing.T) {
 	require.NotNil(t, ar)
 
 	eva, err := client.EvaluatePoolAutoScale(ctx, *pool.ID, azbatch.EvaluatePoolAutoScaleContent{
-		AutoScaleFormula: to.Ptr("$TargetDedicatedNodes=1"),
+		AutoScaleFormula: to.Ptr("$TargetDedicatedNodes=0"),
 	}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, eva)
@@ -454,9 +437,21 @@ func TestPool(t *testing.T) {
 	require.NoError(t, err)
 	require.NotNil(t, dr)
 
+	_, err = poll(
+		func() azbatch.Pool {
+			p, err := client.GetPool(ctx, *pool.ID, &azbatch.GetPoolOptions{SelectParam: []string{"allocationState"}})
+			require.NoError(t, err)
+			return p.Pool
+		},
+		func(p azbatch.Pool) bool {
+			return p.AllocationState != nil && *p.AllocationState == azbatch.AllocationStateSteady
+		},
+		5*time.Minute,
+	)
+	require.NoError(t, err)
 	rp, err := client.ResizePool(ctx, *pool.ID, azbatch.ResizePoolContent{
 		NodeDeallocationOption: to.Ptr(azbatch.NodeDeallocationOptionRequeue),
-		TargetDedicatedNodes:   to.Ptr(*pool.TargetDedicatedNodes + int32(1)),
+		TargetDedicatedNodes:   to.Ptr(int32(1)),
 	}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, rp)
