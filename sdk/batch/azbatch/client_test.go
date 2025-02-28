@@ -346,7 +346,6 @@ func TestNode(t *testing.T) {
 func TestPool(t *testing.T) {
 	client := record(t)
 	pool := defaultPoolContent(t)
-	// this test doesn't require a node so, don't allocate one
 	pool.TargetDedicatedNodes = to.Ptr(int32(0))
 	cp, err := client.CreatePool(ctx, pool, nil)
 	require.NoError(t, err)
@@ -429,12 +428,11 @@ func TestPool(t *testing.T) {
 	require.NoError(t, err)
 	rp, err := client.ResizePool(ctx, *pool.ID, azbatch.ResizePoolContent{
 		NodeDeallocationOption: to.Ptr(azbatch.NodeDeallocationOptionRequeue),
-		TargetDedicatedNodes:   to.Ptr(int32(1)),
+		TargetDedicatedNodes:   to.Ptr(*pool.TargetDedicatedNodes + 1),
 	}, nil)
 	require.NoError(t, err)
 	require.NotNil(t, rp)
 
-	steady(t, client, *pool.ID)
 	sr, err := client.StopPoolResize(ctx, *pool.ID, nil)
 	require.NoError(t, err)
 	require.NotNil(t, sr)
@@ -656,6 +654,13 @@ func TestTask(t *testing.T) {
 
 	t.Run("Replace", func(t *testing.T) {
 		client := record(t)
+		jid := randomString(t)
+		cj, err := client.CreateJob(ctx, azbatch.CreateJobContent{
+			ID:       to.Ptr(jid),
+			PoolInfo: &azbatch.PoolInfo{PoolID: to.Ptr(poolID)},
+		}, nil)
+		require.NoError(t, err)
+		require.NotNil(t, cj)
 		tid := randomString(t)
 		ct, err := client.CreateTask(ctx, jid, azbatch.CreateTaskContent{
 			CommandLine: to.Ptr("/bin/sh -c 'sleep 300'"),
@@ -719,6 +724,8 @@ func TestTask(t *testing.T) {
 		require.NoError(t, err)
 	}
 
+	_ = firstReadyNode(t, client, poolID)
+	var state azbatch.TaskState
 	_, err = poll(
 		func() azbatch.Task {
 			gt, err := client.GetTask(ctx, jid, tid, nil)
@@ -726,11 +733,14 @@ func TestTask(t *testing.T) {
 			return gt.Task
 		},
 		func(task azbatch.Task) bool {
-			return task.State != nil && *task.State == azbatch.TaskStateCompleted
+			if task.State != nil {
+				state = *task.State
+			}
+			return state == azbatch.TaskStateCompleted
 		},
 		5*time.Minute,
 	)
-	require.NoError(t, err, "task isn't complete")
+	require.NoError(t, err, "task state is %q", state)
 
 	files := client.NewListTaskFilesPager(jid, tid, &azbatch.ListTaskFilesOptions{
 		Recursive: to.Ptr(true),
