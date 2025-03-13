@@ -34,6 +34,12 @@ extends:
       ServiceDirectory: azidentity
       UsePipelineProxy: false
 
+      MatrixConfigs:
+        - Name: azidentity_matrix
+          GenerateVMJobs: true
+          Path: sdk/azidentity/platform-matrix.json
+          Selection: sparse
+
       ${{ if endsWith(variables['Build.DefinitionName'], 'weekly') }}:
         PersistOidcToken: true
         AdditionalMatrixConfigs:
