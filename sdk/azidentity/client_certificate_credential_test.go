@@ -128,9 +128,6 @@ func TestClientCertificateCredential_WrongKey(t *testing.T) {
 }
 
 func TestClientCertificateCredential_Live(t *testing.T) {
-	if recording.GetRecordMode() == recording.LiveMode {
-		t.Skip("https://github.com/Azure/azure-sdk-for-go/issues/22879")
-	}
 	tests := []struct {
 		name      string
 		path      string

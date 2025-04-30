@@ -42,7 +42,6 @@ func TestPersistentCacheLive(t *testing.T) {
 	}{
 		{
 			credential: func(t *testing.T, _ azidentity.AuthenticationRecord, c azidentity.Cache) (azcore.TokenCredential, error) {
-				t.Skip("https://github.com/Azure/azure-sdk-for-go/issues/22879")
 				clientID := os.Getenv("IDENTITY_SP_CLIENT_ID")
 				secret := os.Getenv("IDENTITY_SP_CLIENT_SECRET")
 				tenantID := os.Getenv("IDENTITY_SP_TENANT_ID")
