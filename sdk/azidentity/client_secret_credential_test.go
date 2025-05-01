@@ -18,6 +18,18 @@ import (
 const fakeSecret = "secret"
 
 func TestClientSecretCredential_Live(t *testing.T) {
+	for name, value := range map[string]string{
+		"tenantID": liveSP.tenantID,
+		"clientID": liveSP.clientID,
+		"secret":   liveSP.secret,
+	} {
+		if len(value) > 8 {
+			t.Logf("%s: %s...%s", name, value[:4], value[len(value)-4:])
+		} else {
+			t.Logf("%s: %s", name, value[:4])
+		}
+	}
+
 	for _, disabledID := range []bool{true, false} {
 		name := "default options"
 		if disabledID {

@@ -144,6 +144,9 @@ func TestClientCertificateCredential_Live(t *testing.T) {
 			if err != nil {
 				t.Fatalf(`failed to read cert: %v`, err)
 			}
+			t.Logf("%s cert path: %s", t.Name(), test.path)
+			s := string(certData)
+			t.Logf("%s cert data: %s...%s", t.Name(), s[:4], s[len(s)-4:])
 			certs, key, err := ParseCertificates(certData, nil)
 			if err != nil {
 				t.Fatalf(`failed to parse cert: %v`, err)
