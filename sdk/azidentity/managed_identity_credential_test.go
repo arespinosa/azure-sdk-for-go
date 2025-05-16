@@ -260,11 +260,13 @@ func TestManagedIdentityCredential_AzureContainerInstanceLive(t *testing.T) {
 	if ip == "" {
 		t.Skip("set AZIDENTITY_ACI_IP to run this test")
 	}
-	res, err := http.Get("http://" + ip)
+	res, err := http.Get("http://" + ip+"/mic")
 	require.NoError(t, err)
-	b, err := azruntime.Payload(res)
-	require.NoError(t, err)
-	require.Equal(t, "test passed", string(b))
+	if res.StatusCode != http.StatusOK {
+		b, err := azruntime.Payload(res)
+		require.NoError(t, err)
+		t.Fatal("test application returned an error: " + string(b))
+	}
 }
 
 func TestManagedIdentityCredential_AzureFunctionsLive(t *testing.T) {
@@ -277,9 +279,11 @@ func TestManagedIdentityCredential_AzureFunctionsLive(t *testing.T) {
 	url := fmt.Sprintf("https://%s.azurewebsites.net/api/HttpTrigger", fn)
 	res, err := http.Get(url)
 	require.NoError(t, err)
-	b, err := azruntime.Payload(res)
-	require.NoError(t, err)
-	require.Equal(t, "test passed", string(b))
+	if res.StatusCode != http.StatusOK {
+		b, err := azruntime.Payload(res)
+		require.NoError(t, err)
+		t.Fatal("test application returned an error: " + string(b))
+	}
 }
 
 func TestManagedIdentityCredential_AzureMLLive(t *testing.T) {
