@@ -744,9 +744,84 @@ func (c *ContainerClient) ExecuteTransactionalBatch(ctx context.Context, b Trans
 	return response, err
 }
 
+// GetChangeFeed retrieves a single page of the change feed for a Cosmos container using the provided options.
+// Returns a ChangeFeedResponse containing the changed documents and metadata.
+//
+// Example usage:
+//
+//	options := &azcosmos.ChangeFeedOptions{
+//	  MaxItemCount: 10,
+//	  // other options...
+//	}
+//	resp, err := container.GetChangeFeed(context.TODO(), options)
+//	if err != nil {
+//	  // handle error
+//	}
+//	for _, doc := range resp.Documents {
+//	  // process each changed document
+//	}
+//
+// GetChangeFeedWithHeaders retrieves a single page of the change feed for a Cosmos container using the provided options.
+// Supports all relevant headers: A-IM, x-ms-documentdb-partitionkey, x-ms-documentdb-partitionkeyrangeid, If-Modified-Since, If-None-Match.
+func (c *ContainerClient) GetChangeFeed(
+	ctx context.Context,
+	options *ChangeFeedOptions,
+) (ChangeFeedResponse, error) {
+	var err error
+	spanName, err := c.getSpanForItems(operationTypeRead)
+	if err != nil {
+		return ChangeFeedResponse{}, err
+	}
+	ctx, endSpan := runtime.StartSpan(ctx, spanName.name, c.database.client.internal.Tracer(), &spanName.options)
+	defer func() { endSpan(err) }()
+
+	if options == nil {
+		options = &ChangeFeedOptions{}
+	}
+
+	operationContext := pipelineRequestOptions{
+		resourceType:    resourceTypeDocument,
+		resourceAddress: c.link,
+	}
+
+	path, err := generatePathForNameBased(resourceTypeDocument, operationContext.resourceAddress, true)
+	if err != nil {
+		return ChangeFeedResponse{}, err
+	}
+
+	azResponse, err := c.database.client.sendGetRequest(
+		path,
+		ctx,
+		operationContext,
+		options,
+		nil)
+	if err != nil {
+		return ChangeFeedResponse{}, err
+	}
+
+	return newChangeFeedResponse(azResponse)
+}
+
+func (c *ContainerClient) getRID(ctx context.Context) (string, error) {
+	containerResponse, err := c.Read(ctx, nil)
+	if err != nil {
+		return "", err
+	}
+
+	return containerResponse.ContainerProperties.ResourceID, nil
+}
+
+func (c *ContainerClient) getSpanForContainer(operationType operationType, resourceType resourceType, id string) (span, error) {
+	return getSpanNameForContainers(c.database.client.accountEndpointUrl(), operationType, resourceType, c.database.id, id)
+}
+
+func (c *ContainerClient) getSpanForItems(operationType operationType) (span, error) {
+	return getSpanNameForItems(c.database.client.accountEndpointUrl(), operationType, c.database.id, c.id)
+}
+
 // NewChangeFeedPager retrieves the change feed for a Cosmos container.
 // This allows you to read changes made to a container using the pull model.
-// 
+//
 // o - Options for the change feed request, such as partition key, continuation token, max item count, etc.
 //
 // This function supports all features of the change feed pull model, including:
@@ -771,88 +846,71 @@ func (c *ContainerClient) ExecuteTransactionalBatch(ctx context.Context, b Trans
 //       // process each change
 //     }
 //   }
-func (c *ContainerClient) NewChangeFeedPager(o *ChangeFeedOptions) *runtime.Pager[ChangeFeedResponse] {
-	correlatedActivityId, _ := uuid.New()
-	h := headerOptionsOverride{
-		correlatedActivityId: &correlatedActivityId,
-	}
+// func (c *ContainerClient) NewChangeFeedPager(o *ChangeFeedOptions) *runtime.Pager[ChangeFeedResponse] {
+// 	correlatedActivityId, _ := uuid.New()
+// 	h := headerOptionsOverride{
+// 		correlatedActivityId: &correlatedActivityId,
+// 	}
 
-	// Handle partition key override
-	if o != nil && o.PartitionKey != nil {
-		h.partitionKey = o.PartitionKey
-	}
+// 	// Handle partition key override
+// 	if o != nil && o.PartitionKey != nil {
+// 		h.partitionKey = o.PartitionKey
+// 	}
 
-	changeFeedOptions := &ChangeFeedOptions{}
-	if o != nil {
-		originalOptions := *o
-		changeFeedOptions = &originalOptions
-	}
+// 	changeFeedOptions := &ChangeFeedOptions{}
+// 	if o != nil {
+// 		originalOptions := *o
+// 		changeFeedOptions = &originalOptions
+// 	}
 
-	operationContext := pipelineRequestOptions{
-		resourceType:          resourceTypeDocument,
-		resourceAddress:       c.link,
-		headerOptionsOverride: &h,
-	}
+// 	operationContext := pipelineRequestOptions{
+// 		resourceType:          resourceTypeDocument,
+// 		resourceAddress:       c.link,
+// 		headerOptionsOverride: &h,
+// 	}
 
-	path, _ := generatePathForNameBased(resourceTypeDocument, operationContext.resourceAddress, true)
+// 	path, _ := generatePathForNameBased(resourceTypeDocument, operationContext.resourceAddress, true)
 
-	return runtime.NewPager(runtime.PagingHandler[ChangeFeedResponse]{
-		More: func(page ChangeFeedResponse) bool {
-			return page.ContinuationToken != nil
-		},
-		Fetcher: func(ctx context.Context, page *ChangeFeedResponse) (ChangeFeedResponse, error) {
-			var err error
-			spanName, err := c.getSpanForItems(operationTypeRead)
-			if err != nil {
-				return ChangeFeedResponse{}, err
-			}
-			ctx, endSpan := runtime.StartSpan(ctx, spanName.name, c.database.client.internal.Tracer(), &spanName.options)
-			defer func() { endSpan(err) }()
-			
-			if page != nil && page.ContinuationToken != nil {
-				// Use the previous page continuation if available
-				changeFeedOptions.ContinuationToken = page.ContinuationToken
-			}
+// 	return runtime.NewPager(runtime.PagingHandler[ChangeFeedResponse]{
+// 		More: func(page ChangeFeedResponse) bool {
+// 			return page.ContinuationToken != nil
+// 		},
+// 		Fetcher: func(ctx context.Context, page *ChangeFeedResponse) (ChangeFeedResponse, error) {
+// 			var err error
+// 			spanName, err := c.getSpanForItems(operationTypeRead)
+// 			if err != nil {
+// 				return ChangeFeedResponse{}, err
+// 			}
+// 			ctx, endSpan := runtime.StartSpan(ctx, spanName.name, c.database.client.internal.Tracer(), &spanName.options)
+// 			defer func() { endSpan(err) }()
 
-			// Add feed type header to indicate this is a change feed request
-			addHeaders := func(r *policy.Request) {
-				r.Raw().Header.Add("A-IM", "Incremental feed")
-			}
+// 			if page != nil && page.ContinuationToken != nil {
+// 				// Use the previous page continuation if available
+// 				changeFeedOptions.ContinuationToken = page.ContinuationToken
+// 			}
 
-			azResponse, err := c.database.client.sendGetRequest(
-				path,
-				ctx,
-				operationContext,
-				changeFeedOptions,
-				addHeaders)
+// 			// Add feed type header to indicate this is a change feed request
+// 			addHeaders := func(r *policy.Request) {
+// 				r.Raw().Header.Add("A-IM", "Incremental feed")
+// 			}
 
-			if err != nil {
-				return ChangeFeedResponse{}, err
-			}
+// 			azResponse, err := c.database.client.sendGetRequest(
+// 				path,
+// 				ctx,
+// 				operationContext,
+// 				changeFeedOptions,
+// 				addHeaders)
 
-			response, err := newChangeFeedResponse(azResponse)
-			if err != nil {
-				return PartitionKeyRangeResponse{}, err
-			}
+// 			if err != nil {
+// 				return ChangeFeedResponse{}, err
+// 			}
 
-			return response, nil
-		},
-	})
-}
+// 			response, err := newChangeFeedResponse(azResponse)
+// 			if err != nil {
+// 				return PartitionKeyRangeResponse{}, err
+// 			}
 
-func (c *ContainerClient) getRID(ctx context.Context) (string, error) {
-	containerResponse, err := c.Read(ctx, nil)
-	if err != nil {
-		return "", err
-	}
-
-	return containerResponse.ContainerProperties.ResourceID, nil
-}
-
-func (c *ContainerClient) getSpanForContainer(operationType operationType, resourceType resourceType, id string) (span, error) {
-	return getSpanNameForContainers(c.database.client.accountEndpointUrl(), operationType, resourceType, c.database.id, id)
-}
-
-func (c *ContainerClient) getSpanForItems(operationType operationType) (span, error) {
-	return getSpanNameForItems(c.database.client.accountEndpointUrl(), operationType, c.database.id, c.id)
-}
+// 			return response, nil
+// 		},
+// 	})
+// }
