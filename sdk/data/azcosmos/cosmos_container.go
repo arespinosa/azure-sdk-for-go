@@ -474,13 +474,11 @@ func (c *ContainerClient) GetPartitionKeyRange(ctx context.Context, o *Partition
 // GetFeedRanges retrieves all the feed ranges for which changefeed could be fetched.
 // ctx - The context for the request.
 func (c *ContainerClient) GetFeedRanges(ctx context.Context) ([]FeedRange, error) {
-	// Get the partition key ranges from the container
 	response, err := c.GetPartitionKeyRange(ctx, nil)
 	if err != nil {
 		return nil, err
 	}
 
-	// Convert partition key ranges to feed ranges
 	feedRanges := make([]FeedRange, 0, len(response.PartitionKeyRanges))
 	for _, pkr := range response.PartitionKeyRanges {
 		feedRange := FeedRange{
