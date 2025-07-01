@@ -432,65 +432,6 @@ func (c *ContainerClient) ReadItem(
 	return response, err
 }
 
-// GetPartitionKeyRanges retrieves all the distinct Partition Range keys froma a Cosmos container.
-// ctx - The context for the request.
-// o - Options for the operation, can be nil.
-func (c *ContainerClient) GetPartitionKeyRanges(ctx context.Context, o *PartitionKeyRangeOptions) (PartitionKeyRangeResponse, error) {
-	spanName, err := c.getSpanForContainer(operationTypeRead, resourceTypePartitionKeyRange, c.id)
-	if err != nil {
-		return PartitionKeyRangeResponse{}, err
-	}
-	ctx, endSpan := runtime.StartSpan(ctx, spanName.name, c.database.client.internal.Tracer(), &spanName.options)
-	defer func() { endSpan(err) }()
-
-	operationContext := pipelineRequestOptions{
-		resourceType:    resourceTypePartitionKeyRange,
-		resourceAddress: c.link,
-	}
-
-	if o == nil {
-		o = &PartitionKeyRangeOptions{}
-	}
-
-	path, err := generatePathForNameBased(resourceTypePartitionKeyRange, operationContext.resourceAddress, true)
-	if err != nil {
-		return PartitionKeyRangeResponse{}, err
-	}
-
-	azResponse, err := c.database.client.sendGetRequest(
-		path,
-		ctx,
-		operationContext,
-		o,
-		nil)
-
-	response, err := newPartitionKeyRangeResponse(azResponse)
-	if err != nil {
-		return PartitionKeyRangeResponse{}, err
-	}
-	return response, nil
-}
-
-// GetFeedRanges retrieves all the feed ranges for which changefeed could be fetched.
-// ctx - The context for the request.
-func (c *ContainerClient) GetFeedRanges(ctx context.Context) ([]FeedRange, error) {
-	response, err := c.GetPartitionKeyRange(ctx, nil)
-	if err != nil {
-		return nil, err
-	}
-
-	feedRanges := make([]FeedRange, 0, len(response.PartitionKeyRanges))
-	for _, pkr := range response.PartitionKeyRanges {
-		feedRange := FeedRange{
-			MinInclusive: pkr.MinInclusive,
-			MaxExclusive: pkr.MaxExclusive,
-		}
-		feedRanges = append(feedRanges, feedRange)
-	}
-
-	return feedRanges, nil
-}
-
 // DeleteItem deletes an item in a Cosmos container.
 // ctx - The context for the request.
 // partitionKey - The partition key for the item.
@@ -759,4 +700,40 @@ func (c *ContainerClient) getSpanForContainer(operationType operationType, resou
 
 func (c *ContainerClient) getSpanForItems(operationType operationType) (span, error) {
 	return getSpanNameForItems(c.database.client.accountEndpointUrl(), operationType, c.database.id, c.id)
+}
+
+func (c *ContainerClient) getPartitionKeyRanges(ctx context.Context, o *PartitionKeyRangeOptions) (PartitionKeyRangeResponse, error) {
+	spanName, err := c.getSpanForContainer(operationTypeRead, resourceTypePartitionKeyRange, c.id)
+	if err != nil {
+		return PartitionKeyRangeResponse{}, err
+	}
+	ctx, endSpan := runtime.StartSpan(ctx, spanName.name, c.database.client.internal.Tracer(), &spanName.options)
+	defer func() { endSpan(err) }()
+
+	operationContext := pipelineRequestOptions{
+		resourceType:    resourceTypePartitionKeyRange,
+		resourceAddress: c.link,
+	}
+
+	if o == nil {
+		o = &PartitionKeyRangeOptions{}
+	}
+
+	path, err := generatePathForNameBased(resourceTypePartitionKeyRange, operationContext.resourceAddress, true)
+	if err != nil {
+		return PartitionKeyRangeResponse{}, err
+	}
+
+	azResponse, err := c.database.client.sendGetRequest(
+		path,
+		ctx,
+		operationContext,
+		o,
+		nil)
+
+	response, err := newPartitionKeyRangeResponse(azResponse)
+	if err != nil {
+		return PartitionKeyRangeResponse{}, err
+	}
+	return response, nil
 }
