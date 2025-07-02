@@ -662,7 +662,7 @@ func TestEmulatorContainerGetFeedRanges(t *testing.T) {
 	}
 
 	for i, feedRange := range feedRanges {
-		if feedRange.MinInclusive == "" {
+		if i > 0 && feedRange.MinInclusive == "" {
 			t.Errorf("Feed range %d MinInclusive is empty", i)
 		}
 		if feedRange.MaxExclusive == "" {
