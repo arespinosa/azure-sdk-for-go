@@ -484,6 +484,26 @@ func (c *ContainerClient) DeleteItem(
 	return response, err
 }
 
+// GetFeedRanges retrieves all the feed ranges for which changefeed could be fetched.
+// ctx - The context for the request.
+func (c *ContainerClient) GetFeedRanges(ctx context.Context) ([]FeedRange, error) {
+	response, err := c.getPartitionKeyRanges(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	feedRanges := make([]FeedRange, 0, len(response.PartitionKeyRanges))
+	for _, pkr := range response.PartitionKeyRanges {
+		feedRange := FeedRange{
+			MinInclusive: pkr.MinInclusive,
+			MaxExclusive: pkr.MaxExclusive,
+		}
+		feedRanges = append(feedRanges, feedRange)
+	}
+
+	return feedRanges, nil
+}
+
 // NewQueryItemsPager executes a single partition query in a Cosmos container.
 // query - The SQL query to execute.
 // partitionKey - The partition key to scope the query on. See below for more information on cross partition queries.
