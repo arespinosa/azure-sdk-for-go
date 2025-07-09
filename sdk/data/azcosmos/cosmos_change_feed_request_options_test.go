@@ -294,3 +294,93 @@ func TestChangeFeedOptionsCompositeContinuationTokenWithExistingFeedRange(t *tes
 		t.Errorf("Expected FeedRange.MaxExclusive to remain BB, got %v", options.FeedRange.MaxExclusive)
 	}
 }
+
+func TestChangeFeedOptionsContinuationTokenForPartitionKey(t *testing.T) {
+	// Test continuation token for partition key
+	resourceID := "test-resource-id"
+	partitionKey := NewPartitionKeyString("testPK")
+	continuation := azcore.ETag("test-etag")
+
+	token := newContinuationTokenForPartitionKey(resourceID, &partitionKey, &continuation)
+
+	tokenBytes, err := json.Marshal(token)
+	if err != nil {
+		t.Fatalf("Failed to marshal continuation token: %v", err)
+	}
+	tokenString := string(tokenBytes)
+
+	options := &ChangeFeedOptions{
+		Continuation: &tokenString,
+	}
+
+	headers := options.toHeaders(nil)
+	if headers == nil {
+		t.Fatal("toHeaders should return non-nil")
+	}
+
+	h := *headers
+
+	// Should extract ETag from continuation token
+	if h[headerIfNoneMatch] != string(continuation) {
+		t.Errorf("Expected IfNoneMatch to be %v, got %v", string(continuation), h[headerIfNoneMatch])
+	}
+
+	// Should set PartitionKey from continuation token
+	if options.PartitionKey == nil {
+		t.Fatal("Expected PartitionKey to be set from continuation token")
+	}
+	pkJSON, _ := options.PartitionKey.toJsonString()
+	if h[cosmosHeaderPartitionKey] != string(pkJSON) {
+		t.Errorf("Expected PartitionKey to be %v, got %v", string(pkJSON), h[cosmosHeaderPartitionKey])
+	}
+
+	// FeedRange should be nil since this is for partition key
+	if options.FeedRange != nil {
+		t.Errorf("Expected FeedRange to be nil for partition key continuation token, got %v", options.FeedRange)
+	}
+}
+
+func TestChangeFeedOptionsContinuationTokenForPartitionKeyEmpty(t *testing.T) {
+	// Test empty continuation token for partition key
+	resourceID := "test-resource-id"
+	partitionKey := NewPartitionKeyString("testPK")
+	continuation := azcore.ETag("")
+
+	token := newContinuationTokenForPartitionKey(resourceID, &partitionKey, &continuation)
+
+	tokenBytes, err := json.Marshal(token)
+	if err != nil {
+		t.Fatalf("Failed to marshal continuation token: %v", err)
+	}
+	tokenString := string(tokenBytes)
+
+	options := &ChangeFeedOptions{
+		Continuation: &tokenString,
+	}
+
+	headers := options.toHeaders(nil)
+	if headers == nil {
+		t.Fatal("toHeaders should return non-nil")
+	}
+
+	h := *headers
+
+	// Should not set IfNoneMatch header for empty continuation
+	if _, exists := h[headerIfNoneMatch]; exists {
+		t.Errorf("Expected no IfNoneMatch header for empty continuation, but got %v", h[headerIfNoneMatch])
+	}
+
+	// Should set PartitionKey from continuation token
+	if options.PartitionKey == nil {
+		t.Fatal("Expected PartitionKey to be set from continuation token")
+	}
+	pkJSON, _ := options.PartitionKey.toJsonString()
+	if h[cosmosHeaderPartitionKey] != string(pkJSON) {
+		t.Errorf("Expected PartitionKey to be %v, got %v", string(pkJSON), h[cosmosHeaderPartitionKey])
+	}
+
+	// FeedRange should be nil since this is for partition key
+	if options.FeedRange != nil {
+		t.Errorf("Expected FeedRange to be nil for partition key continuation token, got %v", options.FeedRange)
+	}
+}

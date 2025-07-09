@@ -29,6 +29,8 @@ type ChangeFeedResponse struct {
 	// Store the feed range if it was used in the request
 	FeedRange *FeedRange
 
+	PartitionKey *PartitionKey
+
 	Response
 }
 
@@ -82,6 +84,14 @@ func (c ChangeFeedResponse) GetContRanges() (min string, max string, ok bool) {
 	return "", "", false
 }
 
+// GetPartitionKey returns the partition key used in the request, if any.
+func (c ChangeFeedResponse) GetPartitionKey() (partitionKey *PartitionKey, ok bool) {
+	if c.PartitionKey != nil {
+		return c.PartitionKey, true
+	}
+	return nil, false
+}
+
 // getCompositeContinuationToken creates a composite continuation token from the response.
 // This token combines the feed range information with the ETag for use in subsequent requests.
 func (c ChangeFeedResponse) getCompositeContinuationToken() (string, error) {
@@ -94,7 +104,6 @@ func (c ChangeFeedResponse) getCompositeContinuationToken() (string, error) {
 
 	// Get the ETag
 	etag := c.GetContinuation()
-	fmt.Printf("ETag is this: %s\n", etag)
 	if etag == "" {
 		// No ETag available
 		return "", nil
@@ -111,6 +120,34 @@ func (c ChangeFeedResponse) getCompositeContinuationToken() (string, error) {
 
 	// Marshal to JSON
 	tokenBytes, err := json.Marshal(compositeToken)
+	if err != nil {
+		return "", err
+	}
+
+	return string(tokenBytes), nil
+}
+
+// getContinuationTokenForPartitionKey creates a continuation token for a specific partition key.
+func (c ChangeFeedResponse) getContinuationTokenForPartitionKey() (string, error) {
+	// Get the partition key from the response
+	partitionKey, ok := c.GetPartitionKey()
+	if !ok {
+		// No partition key available in the response
+		return "", nil
+	}
+
+	// Get the ETag
+	etag := c.GetContinuation()
+	if etag == "" {
+		// No ETag available
+		return "", nil
+	}
+	etagValue := azcore.ETag(etag)
+
+	continuationToken := newContinuationTokenForPartitionKey(c.ResourceID, partitionKey, &etagValue)
+
+	// Marshal to JSON
+	tokenBytes, err := json.Marshal(continuationToken)
 	if err != nil {
 		return "", err
 	}
