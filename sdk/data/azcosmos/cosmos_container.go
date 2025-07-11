@@ -708,26 +708,18 @@ func (c *ContainerClient) ExecuteTransactionalBatch(ctx context.Context, b Trans
 	return response, err
 }
 
-// TODO: Use getChangeFeedContainer with no FeedRange or PartitionKey set in options to read the change feed for the entire container.
-// func (c *ContainerClient) getChangeFeedContainer(
-// 	ctx context.Context,
-// 	options *ChangeFeedOptions,
-// ) (ChangeFeedResponse, error) {
-// }
-
-// TODO: Use getChangeFeedForPartitionKey set in options to read the change feed for a specific partition.
-// func (c *ContainerClient) getChangeFeedForPartitionKey(
-// 	ctx context.Context,
-// 	partitionKey *PartitionKey,
-// 	options *ChangeFeedOptions,
-// ) (ChangeFeedResponse, error) {
-// }
-
 // GetChangeFeed retrieves a single page of the change feed using the provided options.
 // ctx - The context for the request.
 // options - Options for the operation
 // If options.FeedRange is set, it will retrieve the change feed for the specific range.
 // If options.Continuation contains a composite continuation token, it will extract the feed range from it.
+// If options.PartitionKey is set, it will retrieve the change feed for the specific partition key.
+// If options.Continuation contains a continuation token for a partition key, it will extract the partition key from it.
+// If options.FeedRange and options.PartitionKey are both nil, it will retrieve the change feed for the entire container.
+// The resource type for the change feed is determined by the options provided.
+// - ChangeFeedResourceTypeFeedRange: Retrieves the change feed for a specific EPK range.
+// - ChangeFeedResourceTypePartitionKey: Retrieves the change feed for a specific partition key.
+// - ChangeFeedResourceTypeContainer: Retrieves the change feed for the entire container.
 func (c *ContainerClient) GetChangeFeed(
 	ctx context.Context,
 	options *ChangeFeedOptions,
@@ -737,6 +729,7 @@ func (c *ContainerClient) GetChangeFeed(
 	}
 
 	if options.FeedRange == nil && options.Continuation != nil && *options.Continuation != "" {
+		// If options.FeedRange is nil and options.Continuation is set, try to extract the feed range from the continuation token.
 		var compositeToken compositeContinuationToken
 		if err := json.Unmarshal([]byte(*options.Continuation), &compositeToken); err == nil {
 			if len(compositeToken.Continuation) > 0 {
@@ -748,64 +741,29 @@ func (c *ContainerClient) GetChangeFeed(
 		}
 	}
 
-	if options.FeedRange != nil {
-		return c.getChangeFeedForEPKRange(ctx, options.FeedRange, options)
-	} else {
-		// TODO: Implement logic to handle PartitionKey and Container reads in separate Helper functions
-		// Below is a placeholder for this logic—it should not be used in production
-		var err error
-		spanName, err := c.getSpanForItems(operationTypeRead)
-		if err != nil {
-			return ChangeFeedResponse{}, err
-		}
-		ctx, endSpan := runtime.StartSpan(ctx, spanName.name, c.database.client.internal.Tracer(), &spanName.options)
-		defer func() { endSpan(err) }()
-
-		var addHeaders func(*policy.Request)
-
-		headersPtr := options.toHeaders(nil)
-		if headersPtr != nil {
-			headers := *headersPtr
-			addHeaders = func(r *policy.Request) {
-				for k, v := range headers {
-					r.Raw().Header.Set(k, v)
-				}
+	if options.PartitionKey == nil && options.Continuation != nil && *options.Continuation != "" {
+		// If options.PartitionKey is nil and options.Continuation is set, try to extract the partition key from the continuation token.
+		var continuationToken continuationTokenForPartitionKey
+		if err := json.Unmarshal([]byte(*options.Continuation), &continuationToken); err == nil {
+			if continuationToken.PartitionKey != nil {
+				options.PartitionKey = continuationToken.PartitionKey
 			}
 		}
+	}
 
-		operationContext := pipelineRequestOptions{
-			resourceType:    resourceTypeDocument,
-			resourceAddress: c.link,
-		}
+	options.SetResourceType()
 
-		path, err := generatePathForNameBased(resourceTypeDocument, operationContext.resourceAddress, true)
-		if err != nil {
-			return ChangeFeedResponse{}, err
-		}
+	switch options.resourceType {
+	case ChangeFeedResourceTypeFeedRange:
+		return c.getChangeFeedForEPKRange(ctx, options.FeedRange, options)
 
-		azResponse, err := c.database.client.sendGetRequest(
-			path,
-			ctx,
-			operationContext,
-			nil,
-			addHeaders,
-		)
-		if err != nil {
-			return ChangeFeedResponse{}, err
-		}
+	case ChangeFeedResourceTypePartitionKey:
+		return c.getChangeFeedForPartitionKey(ctx, options.PartitionKey, options)
 
-		response, err := newChangeFeedResponse(azResponse)
-		if err != nil {
-			return response, err
-		}
-
-		if options.FeedRange != nil {
-			response.FeedRange = options.FeedRange
-			response.PopulateCompositeContinuationToken()
-		}
-
-		return response, nil
-		// return ChangeFeedResponse{}, fmt.Errorf("no FeedRange provided in options")
+	case ChangeFeedResourceTypeContainer:
+		return c.getChangeFeedContainer(ctx, options)
+	default:
+		return ChangeFeedResponse{}, errors.New("invalid resource type for change feed")
 	}
 }
 
@@ -871,6 +829,126 @@ func (c *ContainerClient) getChangeFeedForEPKRange(
 
 	response.FeedRange = feedRange
 	response.PopulateCompositeContinuationToken()
+
+	return response, nil
+}
+
+func (c *ContainerClient) getChangeFeedForPartitionKey(
+	ctx context.Context,
+	partitionKey *PartitionKey,
+	options *ChangeFeedOptions,
+) (ChangeFeedResponse, error) {
+	var err error
+	spanName, err := c.getSpanForItems(operationTypeRead)
+	if err != nil {
+		return ChangeFeedResponse{}, err
+	}
+	ctx, endSpan := runtime.StartSpan(ctx, spanName.name, c.database.client.internal.Tracer(), &spanName.options)
+	defer func() { endSpan(err) }()
+
+	if options == nil {
+		options = &ChangeFeedOptions{}
+	}
+
+	if partitionKey == nil {
+		return ChangeFeedResponse{}, errors.New("partition key cannot be nil")
+	}
+
+	var addHeaders func(*policy.Request)
+	headersPtr := options.toHeaders(nil)
+	if headersPtr != nil {
+		headers := *headersPtr
+		addHeaders = func(r *policy.Request) {
+			for k, v := range headers {
+				r.Raw().Header.Set(k, v)
+			}
+		}
+	}
+
+	operationContext := pipelineRequestOptions{
+		resourceType:    resourceTypeDocument,
+		resourceAddress: c.link,
+	}
+
+	path, err := generatePathForNameBased(resourceTypeDocument, operationContext.resourceAddress, true)
+	if err != nil {
+		return ChangeFeedResponse{}, err
+	}
+
+	azResponse, err := c.database.client.sendGetRequest(
+		path,
+		ctx,
+		operationContext,
+		nil,
+		addHeaders,
+	)
+	if err != nil {
+		return ChangeFeedResponse{}, err
+	}
+
+	response, err := newChangeFeedResponse(azResponse)
+	if err != nil {
+		return response, err
+	}
+
+	response.PartitionKey = partitionKey
+	response.PopulateContinuationTokenForPartitionKey()
+
+	return response, nil
+}
+
+func (c *ContainerClient) getChangeFeedContainer(
+	ctx context.Context,
+	options *ChangeFeedOptions,
+) (ChangeFeedResponse, error) {
+	var err error
+	spanName, err := c.getSpanForItems(operationTypeRead)
+	if err != nil {
+		return ChangeFeedResponse{}, err
+	}
+	ctx, endSpan := runtime.StartSpan(ctx, spanName.name, c.database.client.internal.Tracer(), &spanName.options)
+	defer func() { endSpan(err) }()
+
+	if options == nil {
+		options = &ChangeFeedOptions{}
+	}
+
+	var addHeaders func(*policy.Request)
+	headersPtr := options.toHeaders(nil)
+	if headersPtr != nil {
+		headers := *headersPtr
+		addHeaders = func(r *policy.Request) {
+			for k, v := range headers {
+				r.Raw().Header.Set(k, v)
+			}
+		}
+	}
+
+	operationContext := pipelineRequestOptions{
+		resourceType:    resourceTypeDocument,
+		resourceAddress: c.link,
+	}
+
+	path, err := generatePathForNameBased(resourceTypeDocument, operationContext.resourceAddress, true)
+	if err != nil {
+		return ChangeFeedResponse{}, err
+	}
+
+	azResponse, err := c.database.client.sendGetRequest(
+		path,
+		ctx,
+		operationContext,
+		nil,
+		addHeaders,
+	)
+	if err != nil {
+		return ChangeFeedResponse{}, err
+	}
+
+	response, err := newChangeFeedResponse(azResponse)
+	if err != nil {
+		return response, err
+	}
 
 	return response, nil
 }
