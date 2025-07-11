@@ -15,6 +15,15 @@ const (
 	cosmosBaseTen             = 10
 )
 
+// ChangeFeedResourceType represents the resource type for change feed operations.
+type ChangeFeedResourceType int
+
+const (
+	ChangeFeedResourceTypeContainer ChangeFeedResourceType = iota
+	ChangeFeedResourceTypePartitionKey
+	ChangeFeedResourceTypeFeedRange
+)
+
 // ChangeFeedOptions defines the options for retrieving the change feed.
 // Incorporate Continuation
 type ChangeFeedOptions struct {
@@ -35,6 +44,9 @@ type ChangeFeedOptions struct {
 
 	// CompositeContinuation is used to continue reading the change feed from a specific point.
 	Continuation *string
+
+	// ResourceType tracks the resource type based on FeedRange, PartitionKey, or neither.
+	resourceType ChangeFeedResourceType
 }
 
 func (options *ChangeFeedOptions) toHeaders(partitionKeyRanges []partitionKeyRange) *map[string]string {
@@ -53,10 +65,38 @@ func (options *ChangeFeedOptions) toHeaders(partitionKeyRanges []partitionKeyRan
 		headers[cosmosHeaderIfModifiedSince] = formatted
 	}
 
-	if options.PartitionKey != nil {
-		partitionKeyJSON, err := options.PartitionKey.toJsonString()
-		if err == nil {
-			headers[cosmosHeaderPartitionKey] = string(partitionKeyJSON)
+	if options.Continuation != nil && *options.Continuation != "" {
+		var compositeToken compositeContinuationToken
+		var continuationTokenForPartitionKey continuationTokenForPartitionKey
+		if err := json.Unmarshal([]byte(*options.Continuation), &compositeToken); err == nil && len(compositeToken.Continuation) > 0 {
+			// If the continuation token is a composite token, parse it
+			if compositeToken.Continuation[0].ContinuationToken != nil {
+				headers[headerIfNoneMatch] = string(*compositeToken.Continuation[0].ContinuationToken)
+			}
+			if options.FeedRange == nil {
+				options.FeedRange = &FeedRange{
+					MinInclusive: compositeToken.Continuation[0].MinInclusive,
+					MaxExclusive: compositeToken.Continuation[0].MaxExclusive,
+				}
+			}
+		} else if err := json.Unmarshal([]byte(*options.Continuation), &continuationTokenForPartitionKey); err == nil {
+			// If the continuation token is for a partition key, parse it
+			if continuationTokenForPartitionKey.Continuation != nil {
+				headers[headerIfNoneMatch] = string(*continuationTokenForPartitionKey.Continuation)
+			}
+			if options.PartitionKey == nil && continuationTokenForPartitionKey.PartitionKey != nil {
+				pkBytes, err := json.Marshal(continuationTokenForPartitionKey.PartitionKey)
+				if err == nil {
+					var pk PartitionKey
+					err = json.Unmarshal(pkBytes, &pk)
+					if err == nil {
+						options.PartitionKey = &pk
+					}
+				}
+			}
+		} else {
+			// If the continuation token is a simple ETag, use it directly
+			headers[headerIfNoneMatch] = *options.Continuation
 		}
 	}
 
@@ -68,20 +108,10 @@ func (options *ChangeFeedOptions) toHeaders(partitionKeyRanges []partitionKeyRan
 		}
 	}
 
-	if options.Continuation != nil && *options.Continuation != "" {
-		var compositeToken compositeContinuationToken
-		if err := json.Unmarshal([]byte(*options.Continuation), &compositeToken); err == nil && len(compositeToken.Continuation) > 0 {
-			if compositeToken.Continuation[0].ContinuationToken != nil {
-				headers[headerIfNoneMatch] = string(*compositeToken.Continuation[0].ContinuationToken)
-			}
-			if options.FeedRange == nil {
-				options.FeedRange = &FeedRange{
-					MinInclusive: compositeToken.Continuation[0].MinInclusive,
-					MaxExclusive: compositeToken.Continuation[0].MaxExclusive,
-				}
-			}
-		} else {
-			headers[headerIfNoneMatch] = *options.Continuation
+	if options.PartitionKey != nil {
+		partitionKeyJSON, err := json.Marshal(options.PartitionKey)
+		if err == nil {
+			headers[cosmosHeaderPartitionKey] = string(partitionKeyJSON)
 		}
 	}
 
@@ -90,4 +120,15 @@ func (options *ChangeFeedOptions) toHeaders(partitionKeyRanges []partitionKeyRan
 	}
 
 	return &headers
+}
+
+// SetResourceType sets the ResourceType based on which option is set.
+func (options *ChangeFeedOptions) SetResourceType() {
+	if options.FeedRange != nil {
+		options.resourceType = ChangeFeedResourceTypeFeedRange
+	} else if options.PartitionKey != nil {
+		options.resourceType = ChangeFeedResourceTypePartitionKey
+	} else {
+		options.resourceType = ChangeFeedResourceTypeContainer
+	}
 }
